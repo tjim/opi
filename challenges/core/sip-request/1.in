@@ -9,7 +9,6 @@ Route: <sip:scsf-stdn.imsgroup0-001.lcp1.luims.mt.example.com:5060;lr;sdp=ck;lss
 Route: <sip:pcsf-stdn.imsgroup0-000.lcp1.luims.mt.example.com:5060;lr;lsstag=pt-10758-10758>
 Contact: <sip:stas-stdn.fsimsgroup0-000.id.luims.mt.example.com:5060;transport=udp>
 Max-Forwards: 70
-RAck: 8193 1 INVITE
 User-Agent: PolycomSoundPointIP-SPIP_601-UA/2.0.3.0127
 Content-Length: 0
 
