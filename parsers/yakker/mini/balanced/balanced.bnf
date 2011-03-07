@@ -1,10 +1,10 @@
-    balanced = *(wsp tag balanced end-tag) wsp
+    balanced          = *(wsp tag@x balanced end-tag@y @when(x=y)) wsp
 
-    tag      = "<" 1*ALPHA ">"
-    end-tag  = "</" 1*ALPHA ">"
-    wsp      = *(SP|HTAB|CR|LF)
-    ALPHA    = %d65-90|%d97-122
-    SP       = %d32
-    CR       = %d13
-    HTAB     = %d9
-    LF       = %d10
+    tag>@(string)     = "<" @pos@a 1*ALPHA ">" @pos@b @{Yak.Pami.get_substring a (b-1)}
+    end-tag>@(string) = "</" @pos@a 1*ALPHA ">" @pos@b @{Yak.Pami.get_substring a (b-1)}
+    wsp               = *(SP|HTAB|CR|LF)
+    ALPHA             = %d65-90|%d97-122
+    SP                = %d32
+    CR                = %d13
+    HTAB              = %d9
+    LF                = %d10
