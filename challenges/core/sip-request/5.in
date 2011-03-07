@@ -1,0 +1,16 @@
+BYE sip:stas-stdn.fsimsgroup0-000.id.luims.mt.example.com:5060;transport=udp SIP/2.0
+Via: SIP/2.0/UDP 198.51.100.230:5060;branch=z9hG4bK1ac422581e41dcddddca9597d464d4ea45c34f21-1174428617531257
+Via: SIP/2.0/UDP 127.0.0.1;branch=z9hG4bK_01_934058120-923926728;lsstag=so-14199-12755
+Via: SIP/2.0/UDP 127.0.0.1;branch=z9hG4bK_00_934002952-932438088;lsstag=st-14200-12756
+Via: SIP/2.0/UDP 198.51.100.229:5060;received=198.51.100.229;branch=z9hG4bKf4e11d7dfdd6621963e5c72c06eb9cb645c34f1b-1174428617529559;lhop
+Via: SIP/2.0/UDP 127.0.0.1;branch=z9hG4bK_00_877117640-877059016;lsstag=pt-10758-10758
+Via: SIP/2.0/UDP 198.51.100.4:5060;received=198.51.100.4;branch=z9hG4bKpk8itd30cg61pbc947o1.1
+To: "Polycom5550104" <sip:+17325550104@luims.mt.example.com>;tag=45fec75c-1174428610515837lucentNGFS-000558
+From: <sip:+17325550100@luims.mt.example.com;user=phone>;tag=6F76B9E3-429C4226
+Call-ID: LU-1174428610515829@198.51.100.151
+CSeq: 1 BYE
+Contact: <sip:+17325550100-jk3giv3qd7a7d@198.51.100.4:5060;transport=udp>
+Max-Forwards: 66
+User-Agent: PolycomSoundPointIP-SPIP_500-UA/2.0.3.0127
+Content-Length: 0
+

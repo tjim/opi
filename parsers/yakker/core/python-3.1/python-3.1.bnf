@@ -1,0 +1,475 @@
+; A scannerless parser for Python 3, written in Yakker.
+; Adapted from the official docs:
+;
+;     http://docs.python.org/3.1/reference/index.html
+;
+; Their grammar format is much like Yakker's, the main differences are:
+;
+;  They use      We use
+;       ::=      =
+;        r+      1*r
+;        r*      *r
+; "a"..."z"      %d stuff, or |
+; (nothing)      . (to end rule)
+;  impl. ws      explicit whitespace
+;         #      ; (comments)
+;         _      no _ allowed (in nonterminal names), use -
+;
+; Not yet handled: they use an encoding line to specify character encodings,
+; we don't currently support this.
+; Default encoding is UTF-8 and we support this, but we do not support UTF-16
+; which is required.
+;
+; Currently parses all of /usr/lib/python3.1/*.py except:
+; fails on build_class.py which is an empty file
+; seems to loop forever on ftplib.py
+; fails on heapq.py which has an encoding line specifying Latin-1
+; fails on shlex.py which has an encoding line specifying iso-8859-1
+
+@begin {
+
+(* indentation state *)
+type istate = { implicit_continue : int;      (* "implicit continue" within parens/braces/brackets, this is nesting level *)
+                col: int; }                   (* column (indentation level) *)
+let istate0 = { implicit_continue=0; col=0; } (* initial indentation state *)
+let ic(i) =                                   (* increase implicit continue, when entering parens/braces/brackets *)
+  { implicit_continue = i.implicit_continue + 1;
+    col = i.col; }
+(* calculate the column of a sequence of spaces, tabs, and form feeds *)
+let indent_length s =
+  let len = String.length s in
+  let rec loop col i =
+    if i = len then col else
+    let c = String.get s i in
+    if c = '\t' then loop ((col+8)/8*8) (i+1)
+    else if c = '\012' then loop col (i+1) (* ignore form feeds, as required at start of line; unspecified behavior elsewhere *)
+    else loop (col+1) (i+1) in (* NB c is space *)
+  loop 0 0
+}
+
+start-symbol = file_input.
+
+;;;;;;;;;;;;;; Main grammar
+
+single_input = NEWLINE@(;i=istate0) | simple_stmt@(;i=istate0) | compound_stmt@(;i=istate0) NEWLINE@(;i=istate0)
+.
+file_input = *(*wspc NEWLINE@(;i=istate0) | stmt@(;i=istate0)) ENDMARKER
+.
+eval_input = testlist@(;i=istate0) *NEWLINE@(;i=istate0) ENDMARKER
+.
+decorator@(;i:istate) = "@" o dotted_name o [ "(" [o arglist@(;i=ic(i)) o] ")" o] NEWLINE
+.
+decorators = decorator *(nodent decorator)
+.
+decorated = decorators nodent (classdef | funcdef)
+.
+funcdef = "def" o NAME o parameters o ["->" o test o] ":" o suite
+.
+parameters@(;i:istate) = "(" o@(;i=ic(i)) [typedargslist@(;i=ic(i))] o@(;i=ic(i)) ")"
+.
+typedargslist =
+(*(tfpdef o ["=" o test o] "," o)
+ ("*" [o tfpdef] *(o "," o tfpdef [o "=" o test]) [o "," o "**" o tfpdef] | "**" o tfpdef)
+| tfpdef [o "=" o test] *(o "," o tfpdef [o "=" o test]) [o ","])
+.
+tfpdef = NAME [o ":" o test]
+.
+varargslist = (*(vfpdef o ["=" o test o] ",")
+              ("*" [o vfpdef] *(o "," o vfpdef [o "=" o test])  [o "," o "**" o vfpdef]
+              | "**" o vfpdef)
+              | vfpdef [o "=" o test] *(o "," o vfpdef [o "=" o test]) [o ","])
+.
+vfpdef = NAME
+.
+
+stmt = simple_stmt | compound_stmt
+.
+simple_stmt = small_stmt *(o ";" o small_stmt) [o ";"] o NEWLINE
+.
+small_stmt = (expr_stmt | del_stmt | pass_stmt | flow_stmt |
+                   import_stmt | global_stmt | nonlocal_stmt | assert_stmt)
+.
+expr_stmt = testlist
+                       (o augassign o (yield_expr|testlist)
+                       | *(o "=" o (yield_expr|testlist)))
+.
+augassign = ("+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" |
+            "<<=" | ">>=" | "**=" | "//=")
+; For normal assignments, additional restrictions enforced by the interpreter
+.
+del_stmt = "del" o exprlist
+.
+pass_stmt = "pass"
+.
+flow_stmt = break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt
+.
+break_stmt = "break"
+.
+continue_stmt = "continue"
+.
+return_stmt = "return" [o testlist]
+.
+yield_stmt = yield_expr
+.
+raise_stmt = "raise" [o test [o "from" o test]]
+.
+import_stmt = import_name | import_from
+.
+import_name = "import" o dotted_as_names
+.
+; note below = the ("." | "...") is necessary because "..." is tokenized as ELLIPSIS
+;;; TJIM: I think since we do not tokenize, don't need special case for ...
+import_from =
+  ("from" o (*("." o) dotted_name o
+                 | 1*("." o))
+              "import" o ("*"
+                              | "(" o@(;i=ic(i)) import_as_names@(;i=ic(i)) o@(;i=ic(i)) ")"
+                              | import_as_names))
+.
+import_as_name = NAME [o "as" o NAME]
+.
+dotted_as_name = dotted_name [o "as" o NAME]
+.
+import_as_names = import_as_name *(o "," o import_as_name) [o ","]
+.
+dotted_as_names = dotted_as_name *(o "," o dotted_as_name)
+.
+;;; TJIM: not sure whether spaces are allowed
+dotted_name = NAME *("." NAME)
+.
+global_stmt = "global" o NAME *(o "," o NAME)
+.
+nonlocal_stmt = "nonlocal" o NAME *(o "," o NAME)
+.
+assert_stmt = "assert" o test o [o "," o test]
+.
+
+compound_stmt = if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated
+.
+if_stmt = "if" o test o ":" o suite
+                     *(nodent "elif" o test o ":" o suite)
+                     [nodent "else" o ":" o suite]
+.
+while_stmt = "while" o test o ":" o suite [nodent "else" o ":" o suite]
+.
+for_stmt = "for" o exprlist o "in" o testlist o ":" o suite
+                      [nodent "else" o ":" o suite]
+.
+try_stmt = ("try" o ":" o suite
+                       (1*(nodent except_clause o ":" o suite)
+                       [ nodent "else" o ":" o suite]
+                       [ nodent "finally" o ":" o suite]
+                       | nodent "finally" o ":" o suite))
+.
+with_stmt = "with" o with_item *(o "," with_item) o ":" o suite
+.
+with_item = test [o "as" o expr]
+; NB compile.c makes sure that the default except clause is last
+.
+except_clause = "except" [o test [o "as" o NAME]]
+.
+suite = simple_stmt | NEWLINE *blank-line INDENT@i2 stmt@(;i=i2) *(nodent@(;i=i2) stmt@(;i=i2)) ; DEDENT
+.
+
+test = or_test [o "if" o or_test o "else" o test] | lambdef
+.
+test_nocond = or_test | lambdef_nocond
+.
+lambdef = "lambda" [o varargslist] o ":" o test
+.
+lambdef_nocond = "lambda" [o varargslist] o ":" o test_nocond
+.
+or_test = and_test *(o "or" o and_test)
+.
+and_test = not_test *(o "and" o not_test)
+.
+not_test = "not" o not_test | comparison
+.
+comparison = star_expr *(o comp_op o star_expr)
+.
+comp_op = "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"|"not" o "in"|"is"|"is" o "not" ; may need >1 iterations on o here
+.
+star_expr = ["*" o] expr
+.
+expr = xor_expr *(o "|" o xor_expr)
+.
+xor_expr = and_expr *(o "^" o and_expr)
+.
+and_expr = shift_expr *(o "&" o shift_expr)
+.
+shift_expr = arith_expr *(o ("<<"|">>") o arith_expr)
+.
+arith_expr = term *(o ("+"|"-") o term)
+.
+term = factor *(o ("*"|"/"|"%"|"//") o factor)
+.
+factor = ("+"|"-"|"~") o factor | power
+.
+power = atom *(o trailer) [o "**" o factor]
+.
+atom@(;i:istate) = ("(" o@(;i=ic(i)) [yield_expr@(;i=ic(i)) o@(;i=ic(i))|testlist_comp@(;i=ic(i)) o@(;i=ic(i))] ")" |
+               "[" o@(;i=ic(i)) [testlist_comp@(;i=ic(i)) o@(;i=ic(i))] "]" |
+               "{" o@(;i=ic(i)) [dictorsetmaker@(;i=ic(i)) o@(;i=ic(i))] "}" |
+               NAME | NUMBER | (STRING *(o STRING)) | "..." | "None" | "True" | "False")
+.
+testlist_comp = test o ( comp_for | *(o "," o test) [o ","] )
+.
+trailer@(;i:istate) = "(" o@(;i=ic(i)) [arglist@(;i=ic(i)) o@(;i=ic(i))] ")" | "[" o@(;i=ic(i)) subscriptlist@(;i=ic(i)) o@(;i=ic(i)) "]" | "." o NAME ; not sure about .NAME
+.
+subscriptlist = subscript *(o "," o subscript) [o ","]
+.
+subscript = test | [test o] ":" [o test] [o sliceop]
+.
+sliceop = ":" [o test]
+.
+exprlist = star_expr *(o "," o star_expr) [o ","]
+.
+testlist = test *(o "," o test) [o ","]
+.
+dictorsetmaker = ( (test o ":" o test (o comp_for | *(o "," o test o ":" o test) [o ","])) |
+                       (test (o comp_for | *(o "," o test) [o ","])) )
+.
+
+classdef@(;i:istate) = "class" o NAME o ["(" o@(;i=ic(i)) [arglist@(;i=ic(i)) o@(;i=ic(i))] ")" o] ":" o suite
+.
+
+arglist = *(argument "," o) (argument [o ","]
+               |"*" o test *(o "," o argument) [o "," o "**" o test]
+               |"**" o test)
+.
+
+; The reason that keywords are test nodes instead of NAME is that using NAME
+; results in an ambiguity. ast.c makes sure it's a NAME.
+argument = test [o comp_for] | test o "=" o test  ; Really [keyword "="] test
+.
+comp_iter = comp_for | comp_if
+.
+comp_for = "for" o exprlist o "in" o or_test [o comp_iter]
+.
+comp_if = "if" o test_nocond [o comp_iter]
+.
+
+testlist1 = test 1*("," test)
+.
+
+; not used in grammar, but may appear in "node" passed from Parser to Compiler
+encoding_decl = NAME
+.
+
+yield_expr = "yield" [o testlist]
+.
+
+;;;;;;;;;;;;;;;;;;;;; Yakker additions
+;;
+;; Lexical stuff, do not insert whitespace
+
+cr-not-lf = CR !LF.
+end-of-line = LF | CR LF | cr-not-lf.
+
+comment = "#" *((UTF8-1 - (CR | LF))|UTF8-multi) end-of-line.
+
+ENDMARKER = "" !OCTET. ; eof
+
+name-continue = (ALPHA | "_" | DIGIT).
+NAME = (ALPHA | "_") *(ALPHA | "_" | DIGIT) !name-continue. ; TODO: needs lots of unicode stuff
+NUMBER = integer | floatnumber | imagnumber.
+STRING = stringliteral | bytesliteral.
+
+;; Strings
+
+;;; TJIM: had to modify the longstrings so that the use SHORTEST match so """foo"""foo""" is not one string
+stringliteral   =  [stringprefix] (shortstring | longstring).
+stringprefix    =  "r" | "R".
+shortstring     =  "'" *shortstringitem-s "'" | DQUOTE *shortstringitem-d DQUOTE.
+longstring      =  "'''" *longstringitem-s "'''" | DQUOTE DQUOTE DQUOTE *longstringitem-d  DQUOTE DQUOTE DQUOTE.
+shortstringitem-s =  shortstringchar-s | stringescapeseq.
+shortstringitem-d =  shortstringchar-d | stringescapeseq.
+longstringitem-s  =  longstringchar-s | stringescapeseq.
+longstringitem-d  =  longstringchar-d | stringescapeseq.
+shortstringchar-s =  (UTF8-1 - ("\" | LF | "'"))|UTF8-multi.
+shortstringchar-d =  (UTF8-1 - ("\" | LF | DQUOTE))|UTF8-multi.
+longstringchar-s  =  (UTF8-1 - ("\" - "'"))|UTF8-multi | ok-quote.
+ok-quote = "'" !two-quotes.
+two-quotes = "'" "'".
+longstringchar-d  =  (UTF8-1 - ("\" | DQUOTE))|UTF8-multi | ok-dquote.
+ok-dquote = DQUOTE !two-dquotes.
+two-dquotes = DQUOTE DQUOTE.
+stringescapeseq =  "\" UTF8-char.
+
+;; Bytes
+;; TJIM: not sure I believe the grammar given in the spec.
+;; In particular, if \ does not have its usual meaning then
+;; what about "\" ??
+;; Also the spec does not use the two-letter (br etc.) forms, though that appears in a PEP
+;; and in python 2.6 for sure.  It appears in some python files that come with python 3.
+
+bytesliteral   =  bytesprefix (shortbytes | longbytes).
+bytesprefix    =  "b" | "B" | "br" | "Br" | "bR" | "BR".
+shortbytes     =  "'" *shortbytesitem-s "'" | DQUOTE *shortbytesitem-d  DQUOTE.
+longbytes      =  "'''" *longbytesitem-s "'''" |  DQUOTE DQUOTE DQUOTE *longbytesitem-d DQUOTE DQUOTE DQUOTE.
+shortbytesitem-s =  shortbyteschar-s | bytesescapeseq.
+shortbytesitem-d =  shortbyteschar-d | bytesescapeseq.
+longbytesitem-s  =  longbyteschar-s | bytesescapeseq.
+longbytesitem-d  =  longbyteschar-d | bytesescapeseq.
+shortbyteschar-s =  ((CHAR - ("\" | LF | "'"))|%d0).
+shortbyteschar-d =  ((CHAR - ("\" | LF | DQUOTE))|%d0).
+longbyteschar-s  =  ((CHAR - ("\" - "'"))|%d0) | ok-quote.
+longbyteschar-d  =  ((CHAR - ("\" | DQUOTE))|%d0) | ok-dquote.
+bytesescapeseq =  "\" (CHAR|%d0).
+
+;; Integer numbers
+
+integer        =  decimalinteger | octinteger | hexinteger | bininteger.
+decimalinteger =  (nonzerodigit *digit | 1*"0") !DIGIT.
+nonzerodigit   =  (DIGIT - "0").
+digit          =  DIGIT.
+octinteger     =  "0" ("o" | "O") 1*octdigit !octdigit.
+hexinteger     =  "0" ("x" | "X") 1*hexdigit !hexdigit.
+bininteger     =  "0" ("b" | "B") 1*bindigit !bindigit.
+octdigit       =  "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7".
+hexdigit       =  digit|"A"|"B"|"C"|"D"|"E"|"F"|"a"|"b"|"c"|"d"|"e"|"f".
+bindigit       =  "0" | "1".
+
+;; Floating point numbers
+
+floatnumber   =  pointfloat | exponentfloat.
+pointfloat    =  [intpart] fraction | intpart ".".
+exponentfloat =  (intpart | pointfloat) exponent.
+intpart       =  1*digit !digit.
+fraction      =  "." 1*digit !digit.
+exponent      =  ("e" | "E") ["+" | "-"] 1*digit !digit.
+
+;; Imaginary numbers
+
+imagnumber =  (floatnumber | intpart) ("j" | "J").
+
+
+
+FF = %d12.
+wspc = SP | HTAB | FF. ; white space character
+blanks = SP | HTAB | FF | CR | LF.
+not-blanks = "" !blanks.
+o@(;i:istate) = *wspc
+        ("\" end-of-line o                      ; end-of-line = end-of-physical-line
+        | @when(i.implicit_continue>0) (end-of-line | comment) o  ; comment does not denote NEWLINE here
+        | "") !wspc
+.
+
+blank-line@(;i:istate) = *wspc (end-of-line | @when(i.implicit_continue=0) comment).
+
+NEWLINE@(;i:istate) = (end-of-line | @when(i.implicit_continue=0) comment).
+
+INDENT@(;i:istate)>@(istate) =
+    *wspc@x not-blanks @when(indent_length(x) > i.col)
+    @{{implicit_continue=i.implicit_continue;
+       col=indent_length(x);}}.
+nodent@(;i:istate) = ; for after a NEWLINE
+    *blank-line
+    *wspc@x not-blanks @when(indent_length(x) = i.col).
+
+;; TJIM: this UTF-8 grammar from RFC 3629.
+;; Not great IMHO because it allows some invalid sequences, e.g., %xC0 %x80,
+;; which looks like it should decode to NUL except the correct encoding of NUL is %x0;
+;; these are the "overlong sequences".
+UTF8-octets = *( UTF8-char ).
+UTF8-char   = UTF8-1 / UTF8-2 / UTF8-3 / UTF8-4.
+UTF8-1      = %x00-7F.
+UTF8-2      = %xC2-DF UTF8-tail.
+UTF8-3      = %xE0 %xA0-BF UTF8-tail / %xE1-EC 2( UTF8-tail ) /
+              %xED %x80-9F UTF8-tail / %xEE-EF 2( UTF8-tail ).
+UTF8-4      = %xF0 %x90-BF 2( UTF8-tail ) / %xF1-F3 3( UTF8-tail ) /
+              %xF4 %x80-8F 2( UTF8-tail ).
+UTF8-tail   = %x80-BF.
+
+;; TJIM: used for removing characters, e.g., (UTF8-1 - "\")|UTF8-multi
+;; instead of the ASCII version (CHAR - "\").
+UTF8-multi = UTF8-2 / UTF8-3 / UTF8-4.
+
+@end {
+  Yak.Pami.Simple.test parse_file visualize_file
+}
+
+
+;
+; Questions regarding
+; http://docs.python.org/3.1/reference/lexical_analysis.html
+;
+; > A physical line is a sequence of characters terminated by an
+; > end-of-line sequence. In source files, any of the standard platform
+; > line termination sequences can be used - the Unix form using ASCII LF
+; > (linefeed), the Windows form using the ASCII sequence CR LF (return
+; > followed by linefeed), or the old Macintosh form using the ASCII CR
+; > (return) character. All of these forms can be used equally, regardless
+; > of platform.
+;
+; What about end-of-file?  If a file ends without end-of-line does that
+; last line count?  Can a file mix the different forms of end-of-line,
+; or does it have to be consistent---if you start with just LF can you
+; change to CR, etc.?
+;
+; > When embedding Python, source code strings should be passed to
+; > Python APIs using the standard C conventions for newline characters
+; > (the \n character, representing ASCII LF, is the line terminator).
+;
+; What if you don't use \n and instead use CR or CR LF?
+;
+; > Two or more physical lines may be joined into logical lines using
+; > backslash characters (\), as follows: when a physical line ends in a
+; > backslash that is not part of a string literal or comment, it is
+; > joined with the following forming a single logical line, deleting
+; > the backslash and the following end-of-line character.
+;
+; What if the \ is followed by the end-of-file?
+;
+; > Expressions in parentheses, square brackets or curly braces can be
+; > split over more than one physical line without using
+; > backslashes... Implicitly continued lines can carry comments. The
+; > indentation of the continuation lines is not important. Blank
+; > continuation lines are allowed. There is no NEWLINE token between
+; > implicit continuation lines. Implicitly continued lines can also
+; > occur within triple-quoted strings (see below); in that case they
+; > cannot carry comments.
+;
+; So a comment might denote NEWLINE and might not, depending on the
+; parser; need to match parens, i.e., this whitespace treatment is not a
+; regular language.
+;
+; What if we are in a place where we can implicitly continue lines but
+; we instead explicitly continue the line?
+;
+; > A logical line that contains only spaces, tabs, formfeeds and
+; > possibly a comment, is ignored (i.e., no NEWLINE token is
+; > generated). During interactive input of statements, handling of a
+; > blank line may differ depending on the implementation of the
+; > read-eval-print loop. In the standard interactive interpreter, an
+; > entirely blank logical line (i.e. one containing not even whitespace
+; > or a comment) terminates a multi-line statement.
+;
+; Hm.
+;
+; > Indentation is rejected as inconsistent if a source file mixes tabs
+; > and spaces in a way that makes the meaning dependent on the worth of
+; > a tab in spaces; a TabError is raised in that case.
+;
+; No idea what this means.  The defn. of how to treat TABs above seems fine.
+;
+; > A formfeed character may be present at the start of the line; it
+; > will be ignored for the indentation calculations above. Formfeed
+; > characters occurring elsewhere in the leading whitespace have an
+; > undefined effect (for instance, they may reset the space count to
+; > zero).
+;
+; Ok.
+;
+; > Before the first line of the file is read, a single zero is pushed
+; > on the stack; this will never be popped off again. The numbers
+; > pushed on the stack will always be strictly increasing from bottom
+; > to top. At the beginning of each logical line, the line's
+; > indentation level is compared to the top of the stack. If it is
+; > equal, nothing happens. If it is larger, it is pushed on the stack,
+; > and one INDENT token is generated. If it is smaller, it must be one
+; > of the numbers occurring on the stack; all numbers on the stack that
+; > are larger are popped off, and for each number popped off a DEDENT
+; > token is generated. At the end of the file, a DEDENT token is
+; > generated for each number remaining on the stack that is larger than
+; > zero.

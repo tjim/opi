@@ -1,0 +1,13 @@
+ACK sip:stas-stdn.fsimsgroup0-000.id.luims.mt.example.com:5060;transport=udp SIP/2.0
+Via: SIP/2.0/UDP 198.51.100.220;branch=z9hG4bK86c63fdcF1BA6085
+From: "Polycom5550104" <sip:+17325550104@luims.mt.example.com>;tag=816AF108-6F9D4207
+To: <sip:+17325550100@luims.mt.example.com;user=phone>;tag=45fec75c-1174428610817488lucentNGFS-000557
+Route: <sip:pcsf-stdn.imsgroup0-000.lcp1.luims.mt.example.com:5060;lr;lsstag=po-10757-10757>
+CSeq: 1 ACK
+Call-ID: 1f547ab4-cc8c83ce-ced0da1d@198.51.100.220
+Contact: <sip:+17325550104@198.51.100.220>
+Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, INFO, MESSAGE, SUBSCRIBE, NOTIFY, PRACK, UPDATE, REFER
+User-Agent: PolycomSoundPointIP-SPIP_601-UA/2.0.3.0127
+Max-Forwards: 70
+Content-Length: 0
+

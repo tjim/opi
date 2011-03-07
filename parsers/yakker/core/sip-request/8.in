@@ -1,0 +1,12 @@
+REGISTER sip:luims.mt.example.com SIP/2.0
+Via: SIP/2.0/UDP 198.51.100.232:5060;rport;branch=z9hG4bK7A263D47885A484DAADA26A980D45996
+From: 17325550103 <sip:+17325550103@luims.mt.example.com>;tag=4097000093
+To: 17325550103 <sip:+17325550103@luims.mt.example.com>
+Contact: "17325550103" <sip:+17325550103@198.51.100.232:5060>
+Call-ID: D77D47516B364E13BD847A6EAED9284E@luims.mt.example.com
+CSeq: 39975 REGISTER
+Expires: 900
+Max-Forwards: 70
+User-Agent: X-Lite release 1103m
+Content-Length: 0
+

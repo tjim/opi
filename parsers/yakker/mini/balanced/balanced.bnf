@@ -1,0 +1,10 @@
+    balanced = *(wsp tag balanced end-tag) wsp
+
+    tag      = "<" 1*ALPHA ">"
+    end-tag  = "</" 1*ALPHA ">"
+    wsp      = *(SP|HTAB|CR|LF)
+    ALPHA    = %d65-90|%d97-122
+    SP       = %d32
+    CR       = %d13
+    HTAB     = %d9
+    LF       = %d10
