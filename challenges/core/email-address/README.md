@@ -53,3 +53,5 @@ An address is an email address as specified by [RFC 2822](http://www.rfc-editor.
 This specification is in [ABNF notation](http://www.rfc-editor.org/rfc/rfc4234.txt).
 
 The language of addresses is not regular, due to the nested parentheses of comments.
+
+See also [this page](http://www.dominicsayers.com/isemail/) for another take.
