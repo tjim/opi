@@ -1,4 +1,8 @@
-    Response             = Status-Line *message-header CRLF [message-body]
+    Response             = Status-Line message-headers@(;l=0) CRLF message-body@(;l=l)
+
+    message-headers      = *message-header
+    message-body@(;l:int)
+                         = (@repeat(l) OCTET)
     Status-Line          = SIP-Version SP Status-Code SP Reason-Phrase CRLF
     Status-Code          = Informational | Redirection | Success |
                            Client-Error | Server-Error | Global-Failure | extension-code
@@ -16,7 +20,6 @@
                              UTF8-CONT | SP | HTAB)
     Success              = "200"
     extension-code       = 3DIGIT
-    message-body         = *OCTET
     OCTET                = %d0-255
     message-header       = (Accept | Accept-Encoding | Accept-Language | Alert-Info |
                             Allow | Authentication-Info | Authorization | Call-ID |
@@ -27,8 +30,8 @@
                             Priority | Proxy-Authenticate | Proxy-Authorization |
                             Proxy-Require | Record-Route | Reply-To | Require | Retry-After |
                             Route | Server | Subject | Supported | Timestamp | To |
-                            Unsupported | User-Agent | Via | Warning | WWW-Authenticate |
-                            extension-header) CRLF
+                            Unsupported | User-Agent | Via | Warning | WWW-Authenticate)
+                           CRLF  ;;; TJIM: removed extension-header, a catch-all case
     extension-header     = header-name HCOLON header-value
     header-value         = *(TEXT-UTF8char | UTF8-CONT | LWS)
     header-name          = token
@@ -58,7 +61,7 @@
     URI                  = absoluteURI | abs-path
     Priority             = "Priority" HCOLON priority-value
     Organization         = "Organization" HCOLON [TEXT-UTF8-TRIM]
-    TEXT-UTF8-TRIM       = 1*TEXT-UTF8char *(*LWS TEXT-UTF8char)
+    TEXT-UTF8-TRIM       = 1*TEXT-UTF8char *( *LWS TEXT-UTF8char)
     TEXT-UTF8char        = %d33-126 | UTF8-NONASCII
     Min-Expires          = "Min-Expires" HCOLON delta-seconds
     Max-Forwards         = "Max-Forwards" HCOLON 1*DIGIT
@@ -74,7 +77,8 @@
     SIP-date             = rfc1123-date
     Content-Type         = ("Content-Type" | "c") HCOLON media-type
     media-type           = m-type SLASH m-subtype *(SEMI m-parameter)
-    Content-Length       = ("Content-Length" | "l") HCOLON 1*DIGIT
+    Content-Length@(;l:int)>@(;l:int)
+                         = ("Content-Length" | "l") HCOLON (1*DIGIT)@x @{int_of_string x}>@l
     Content-Language     = "Content-Language" HCOLON language-tag *(COMMA language-tag)
     language-tag         = primary-tag *("-" subtag)
     Content-Encoding     = ("Content-Encoding" | "e") HCOLON content-coding *(COMMA content-coding)
@@ -275,7 +279,7 @@
     warning-value        = warn-code SP warn-agent SP warn-text
     warn-text            = quoted-string
     quoted-string        = SWS DQUOTE *(qdtext | quoted-pair) DQUOTE
-    quoted-pair          = "\" (%d0-9 | %d11-12 | %d14-127)
+    quoted-pair          = %d92 (%d0-9 | %d11-12 | %d14-127)
     qdtext               = LWS | %d33 | %d35-91 | %d93-126 | UTF8-NONASCII
     UTF8-NONASCII        = (%d192-223 1UTF8-CONT) | (%d224-239 2UTF8-CONT) |
                            (%d240-247 3UTF8-CONT) | (%d248-251 4UTF8-CONT) |
@@ -309,7 +313,7 @@
     wkday                = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"
     word                 = 1*(alphanum | "-" | "." | "!" | "%" | "*" | "_" |
                               "+" | "`" | "'" | "~" | "(" | ")" | "<" | ">" |
-                              ":" | "\" | DQUOTE | "/" | "[" | "]" | "?" | "{" | "}")
+                              ":" | %d92 | DQUOTE | "/" | "[" | "]" | "?" | "{" | "}")
     DQUOTE               = %d34
     x-token              = "x-" token
     token                = 1*(alphanum | "-" | "." | "!" | "%" | "*" | "_" |
